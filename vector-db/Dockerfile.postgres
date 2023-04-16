@@ -1,0 +1,20 @@
+FROM postgres:14
+
+ENV PGVECTOR_VERSION=v0.2.1
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    git \
+    postgresql-server-dev-14 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/ankane/pgvector.git --branch ${PGVECTOR_VERSION} --depth 1 && \
+    cd pgvector && \
+    make && \
+    make install && \
+    cd .. && \
+    rm -rf pgvector
+
+COPY init.sql /docker-entrypoint-initdb.d/

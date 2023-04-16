@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+aiofiles
+Jinja2
+sqlalchemy
+numpy
+psycopg2
+python-multipart
+pgvector
+torch
+torchvision
+opencv-python
+timm
