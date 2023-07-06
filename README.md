@@ -4,7 +4,7 @@ These are some projects related to AI. Vector DB is a frontend to an ML model my
 
 Mammal sleep analysis is an idea I had from reading a book about sleep.
 
-dogs_cats_vae is a notebook exploring using vae. had issues generating dogs and cats. will revisit.
+dogs_cats_vae is a notebook exploring using vae. had issues generating dogs and cats. tried vgg-based perceptual loss. will revisit.
 
 ## More Ideas
 
