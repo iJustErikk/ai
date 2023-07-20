@@ -3,7 +3,10 @@ import { FileUploader } from "react-drag-drop-files";
 import './App.css';
 import defaultImage from "./assets/default.jpeg";
 
-const port = 8000;
+// HACK for codespaces demo
+const ip = window.location.href.split('//')[1].split('/')[0];
+const port = ip.includes('github') ? '' : 8000;
+
 function App() {
   const [selectedImage, setSelectedImage] = useState(defaultImage);
   const [searchResults, setSearchResults] = useState([]);
@@ -38,7 +41,7 @@ function App() {
     }
 
     try {
-      const response = await fetch(`http://localhost:${port}/upload-image`, {
+      const response = await fetch(`https://${ip}:${port}/upload-image`, {
         method: 'POST',
         body: formData,
       });
@@ -73,7 +76,8 @@ function App() {
     }
 
     try {
-      const response = await fetch(`http://localhost:${port}/search-image`, {
+      console.log(`https://${ip}:${port}/search-image`)
+      const response = await fetch(`https://${ip}:${port}/search-image`, {
         method: 'POST',
         body: formData,
       });
@@ -103,7 +107,7 @@ function App() {
       <div className="image-grid">
         {searchResults.map((result) => (
           <div key={result.id}>
-            <img src={`http://localhost:${port}/${result.path}`} alt={result.name} />
+            <img src={`https://${ip}:${port}/${result.path}`} alt={result.name} />
           </div>
         ))}
       </div>

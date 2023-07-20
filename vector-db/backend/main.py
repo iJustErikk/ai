@@ -33,6 +33,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/images", StaticFiles(directory="images"), name="static")
 app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
 templates = Jinja2Templates(directory="static")
+
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -47,75 +48,85 @@ class Image(Base):
     name = Column(String)
     path = Column(String)
     embedding = mapped_column(Vector(EMBED_SIZE))
-DATABASE_URL = os.environ['DATABASE_URL']
-engine = create_engine(DATABASE_URL)
-Base.metadata.create_all(bind=engine)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-insp = inspect(engine)
-indexes = insp.get_indexes("images") 
-if not any(index["name"] == "embed_index" for index in indexes):
-    index = Index('embed_index', Image.embedding,
-            postgresql_using='ivfflat',
-            postgresql_with={'lists': 100},
-            postgresql_ops={'embedding': 'vector_cosine_ops'}
-    )
-    index.create(engine)
+def setup_db():
+    DATABASE_URL = os.environ['DATABASE_URL']
+    engine = create_engine(DATABASE_URL)
+    Base.metadata.create_all(bind=engine)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    insp = inspect(engine)
+    indexes = insp.get_indexes("images") 
+    if not any(index["name"] == "embed_index" for index in indexes):
+        index = Index('embed_index', Image.embedding,
+                postgresql_using='ivfflat',
+                postgresql_with={'lists': 100},
+                postgresql_ops={'embedding': 'vector_cosine_ops'}
+        )
+        index.create(engine)
+    return SessionLocal
+SessionLocal = setup_db()
 
 
 # load model
-model = timm.create_model('efficientnet_b0', pretrained=False)
-model.classifier = torch.nn.Sequential(
-  torch.nn.Linear(1280, 1024),
-  torch.nn.ReLU(),
-  torch.nn.Linear(1024, 15)
-  )
-model.load_state_dict(torch.load('model_state_dict.pth'))
-# make last 2 layers identity, so we can get our embeddings
-model.classifier[1] = torch.nn.Identity()
-model.classifier[2] = torch.nn.Identity()
-model.eval() 
+def setup_model():
+    model = timm.create_model('efficientnet_b0', pretrained=False)
+    model.classifier = torch.nn.Sequential(
+    torch.nn.Linear(1280, 1024),
+    torch.nn.ReLU(),
+    torch.nn.Linear(1024, 15)
+    )
+    model.load_state_dict(torch.load('model_state_dict.pth'))
+    # make last 2 layers identity, so we can get our embeddings
+    model.classifier[1] = torch.nn.Identity()
+    model.classifier[2] = torch.nn.Identity()
+    model.eval() 
+    return model
+model = setup_model()
 
 # model transform
+def get_model_transform():
+    def normalize_transform():
+        if True: # Normalization for pre-trained weights.
+            normalize = transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+                )
+        return normalize
+    IMAGE_SIZE = 224
+    def get_transform():
+        transform = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+            transforms.ToTensor(),
+            normalize_transform()
+        ])
+        return transform
 
-def normalize_transform():
-    if True: # Normalization for pre-trained weights.
-        normalize = transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-            )
-    return normalize
-IMAGE_SIZE = 224
-def get_transform():
-    transform = transforms.Compose([
-        transforms.ToPILImage(),
-        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-        transforms.ToTensor(),
-        normalize_transform()
-    ])
-    return transform
-
-transform = get_transform()
+    return get_transform()
+transform = get_model_transform()
 
 # seed db
-seed = os.environ['SEED'] == 'true'
-if seed:
-    empty_table = False
-    with SessionLocal() as db:
-        count = db.query(func.count(Image.id)).scalar()
-        empty_table = count == 0
-    if empty_table:
-        image_batch = []    
-        for idx, filename in enumerate(os.listdir('images')):
-            image = read_image('images/' + filename)
-            image_batch.append(transform(image))
-        image_batch = torch.stack(image_batch)
-        with torch.no_grad():
-            embeddings = model(image_batch).numpy()
-        images = [Image(name=filename, path=f"images/{filename}", embedding=embeddings[idx]) for idx, filename in enumerate(os.listdir('images'))]
+def seed_db():
+    seed = os.environ['SEED'] == 'true'
+    if seed:
+        empty_table = False
         with SessionLocal() as db:
-            db.bulk_save_objects(images)
-            db.commit()
+            count = db.query(func.count(Image.id)).scalar()
+            empty_table = count == 0
+        if empty_table:
+            image_batch = []    
+            for idx, filename in enumerate(os.listdir('images')):
+                image = read_image('images/' + filename)
+                image_batch.append(transform(image))
+            image_batch = torch.stack(image_batch)
+            with torch.no_grad():
+                embeddings = model(image_batch).numpy()
+            images = [Image(name=filename, path=f"images/{filename}", embedding=embeddings[idx]) for idx, filename in enumerate(os.listdir('images'))]
+            with SessionLocal() as db:
+                db.bulk_save_objects(images)
+                db.commit()
+seed_db()
 
 
 
